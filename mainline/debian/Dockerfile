@@ -92,7 +92,6 @@ RUN set -x \
 # if we have leftovers from building, let's purge them (including extra, unnecessary build deps)
     && if [ -n "$tempDir" ]; then \
         apt-get purge -y --auto-remove \
-        && cp -rf  "$tempDir"  /tmp/learn \
         && rm -rf "$tempDir" /etc/apt/sources.list.d/temp.list; \
     fi \
 # forward request and error logs to docker log collector
