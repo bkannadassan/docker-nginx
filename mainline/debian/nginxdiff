@@ -1,0 +1,248 @@
+diff --git a/src/core/ngx_connection.h b/src/core/ngx_connection.h
+index 4716da4..23bbb5d 100644
+--- a/src/core/ngx_connection.h
++++ b/src/core/ngx_connection.h
+@@ -124,6 +124,7 @@ struct ngx_connection_s {
+     ngx_event_t        *read;
+     ngx_event_t        *write;
+ 
++    char                sticky[4];
+     ngx_socket_t        fd;
+ 
+     ngx_recv_pt         recv;
+diff --git a/src/event/ngx_event_connect.h b/src/event/ngx_event_connect.h
+index d3b2378..3987833 100644
+--- a/src/event/ngx_event_connect.h
++++ b/src/event/ngx_event_connect.h
+@@ -40,6 +40,7 @@ struct ngx_peer_connection_s {
+     socklen_t                        socklen;
+     ngx_str_t                       *name;
+ 
++    char                             sticky[4];
+     ngx_uint_t                       tries;
+     ngx_msec_t                       start_time;
+ 
+diff --git a/src/event/ngx_event_udp.c b/src/event/ngx_event_udp.c
+index a524ae0..7064d23 100644
+--- a/src/event/ngx_event_udp.c
++++ b/src/event/ngx_event_udp.c
+@@ -305,6 +305,7 @@ ngx_event_recvmsg(ngx_event_t *ev)
+         }
+ 
+         ngx_memcpy(c->sockaddr, sockaddr, socklen);
++        ngx_memcpy(c->sticky, (char *)msg.msg_iov[0].iov_base, 4);
+ 
+         log = ngx_palloc(c->pool, sizeof(ngx_log_t));
+         if (log == NULL) {
+diff --git a/src/stream/ngx_stream.h b/src/stream/ngx_stream.h
+index 46c3622..dba2e94 100644
+--- a/src/stream/ngx_stream.h
++++ b/src/stream/ngx_stream.h
+@@ -200,6 +200,7 @@ struct ngx_stream_session_s {
+ 
+     ngx_connection_t              *connection;
+ 
++    char                           sticky[4];
+     off_t                          received;
+     time_t                         start_sec;
+     ngx_msec_t                     start_msec;
+diff --git a/src/stream/ngx_stream_proxy_module.c b/src/stream/ngx_stream_proxy_module.c
+index 8c686ab..651f7e2 100644
+--- a/src/stream/ngx_stream_proxy_module.c
++++ b/src/stream/ngx_stream_proxy_module.c
+@@ -414,6 +414,10 @@ ngx_stream_proxy_handler(ngx_stream_session_t *s)
+ 
+     u->peer.log = c->log;
+     u->peer.log_error = NGX_ERROR_ERR;
++    s->sticky[0] = u->sticky[0] = c->sticky[0];
++    s->sticky[1] = u->sticky[0] = c->sticky[1];
++    s->sticky[2] = u->sticky[0] = c->sticky[2];
++    s->sticky[3] = u->sticky[0] = c->sticky[3];
+ 
+     if (ngx_stream_proxy_set_local(s, u, pscf->local) != NGX_OK) {
+         ngx_stream_proxy_finalize(s, NGX_STREAM_INTERNAL_SERVER_ERROR);
+@@ -721,6 +725,11 @@ ngx_stream_proxy_connect(ngx_stream_session_t *s)
+     u->state->first_byte_time = (ngx_msec_t) -1;
+     u->state->response_time = (ngx_msec_t) -1;
+ 
++    u->peer.sticky[0] = c->sticky[0];
++    u->peer.sticky[1] = c->sticky[1];
++    u->peer.sticky[2] = c->sticky[2];
++    u->peer.sticky[3] = c->sticky[3];
++
+     rc = ngx_event_connect_peer(&u->peer);
+ 
+     ngx_log_debug1(NGX_LOG_DEBUG_STREAM, c->log, 0, "proxy connect: %i", rc);
+diff --git a/src/stream/ngx_stream_upstream.h b/src/stream/ngx_stream_upstream.h
+index 9857e0b..828cef4 100644
+--- a/src/stream/ngx_stream_upstream.h
++++ b/src/stream/ngx_stream_upstream.h
+@@ -120,6 +120,7 @@ typedef struct {
+     ngx_buf_t                          downstream_buf;
+     ngx_buf_t                          upstream_buf;
+ 
++    char                               sticky[4];
+     ngx_chain_t                       *free;
+     ngx_chain_t                       *upstream_out;
+     ngx_chain_t                       *upstream_busy;
+diff --git a/src/stream/ngx_stream_upstream_hash_module.c b/src/stream/ngx_stream_upstream_hash_module.c
+index b764fcb..c8541a6 100644
+--- a/src/stream/ngx_stream_upstream_hash_module.c
++++ b/src/stream/ngx_stream_upstream_hash_module.c
+@@ -108,6 +108,7 @@ static ngx_int_t
+ ngx_stream_upstream_init_hash(ngx_conf_t *cf,
+     ngx_stream_upstream_srv_conf_t *us)
+ {
++    printf("%s \n", __func__);
+     if (ngx_stream_upstream_init_round_robin(cf, us) != NGX_OK) {
+         return NGX_ERROR;
+     }
+@@ -122,6 +123,7 @@ static ngx_int_t
+ ngx_stream_upstream_init_hash_peer(ngx_stream_session_t *s,
+     ngx_stream_upstream_srv_conf_t *us)
+ {
++    printf("%s \n", __func__);
+     ngx_stream_upstream_hash_srv_conf_t   *hcf;
+     ngx_stream_upstream_hash_peer_data_t  *hp;
+ 
+@@ -162,6 +164,7 @@ ngx_stream_upstream_init_hash_peer(ngx_stream_session_t *s,
+ static ngx_int_t
+ ngx_stream_upstream_get_hash_peer(ngx_peer_connection_t *pc, void *data)
+ {
++    printf("%s \n", __func__);
+     ngx_stream_upstream_hash_peer_data_t *hp = data;
+ 
+     time_t                          now;
+@@ -285,6 +288,7 @@ static ngx_int_t
+ ngx_stream_upstream_init_chash(ngx_conf_t *cf,
+     ngx_stream_upstream_srv_conf_t *us)
+ {
++    printf("%s \n", __func__);
+     u_char                               *host, *port, c;
+     size_t                                host_len, port_len, size;
+     uint32_t                              hash, base_hash;
+@@ -299,6 +303,7 @@ ngx_stream_upstream_init_chash(ngx_conf_t *cf,
+         u_char                            byte[4];
+     } prev_hash;
+ 
++    printf("Hashing the Entries...\n");
+     if (ngx_stream_upstream_init_round_robin(cf, us) != NGX_OK) {
+         return NGX_ERROR;
+     }
+@@ -326,6 +331,7 @@ ngx_stream_upstream_init_chash(ngx_conf_t *cf,
+          * crc32(HOST \0 PORT PREV_HASH).
+          */
+ 
++        printf("Server Details %s...\n", server->data);
+         if (server->len >= 5
+             && ngx_strncasecmp(server->data, (u_char *) "unix:", 5) == 0)
+         {
+@@ -366,6 +372,7 @@ ngx_stream_upstream_init_chash(ngx_conf_t *cf,
+ 
+         prev_hash.value = 0;
+         npoints = peer->weight * 160;
++        printf("Base Hash [%s...%x]\n", host, base_hash);
+ 
+         for (j = 0; j < npoints; j++) {
+             hash = base_hash;
+@@ -373,6 +380,7 @@ ngx_stream_upstream_init_chash(ngx_conf_t *cf,
+             ngx_crc32_update(&hash, prev_hash.byte, 4);
+             ngx_crc32_final(hash);
+ 
++            printf("[%ld...%x]", j, hash);
+             points->point[points->number].hash = hash;
+             points->point[points->number].server = server;
+             points->number++;
+@@ -386,6 +394,7 @@ ngx_stream_upstream_init_chash(ngx_conf_t *cf,
+             prev_hash.byte[3] = (u_char) ((hash >> 24) & 0xff);
+ #endif
+         }
++        printf("\n");
+     }
+ 
+     ngx_qsort(points->point,
+@@ -394,10 +403,12 @@ ngx_stream_upstream_init_chash(ngx_conf_t *cf,
+               ngx_stream_upstream_chash_cmp_points);
+ 
+     for (i = 0, j = 1; j < points->number; j++) {
++        printf("[%ld...%x]", j, points->point[j].hash);
+         if (points->point[i].hash != points->point[j].hash) {
+             points->point[++i] = points->point[j];
+         }
+     }
++    printf("\n");
+ 
+     points->number = i + 1;
+ 
+@@ -412,6 +423,7 @@ ngx_stream_upstream_init_chash(ngx_conf_t *cf,
+ static int ngx_libc_cdecl
+ ngx_stream_upstream_chash_cmp_points(const void *one, const void *two)
+ {
++    printf("%s \n", __func__);
+     ngx_stream_upstream_chash_point_t *first =
+                                      (ngx_stream_upstream_chash_point_t *) one;
+     ngx_stream_upstream_chash_point_t *second =
+@@ -433,6 +445,7 @@ static ngx_uint_t
+ ngx_stream_upstream_find_chash_point(ngx_stream_upstream_chash_points_t *points,
+     uint32_t hash)
+ {
++    printf("%s %x\n", __func__, hash);
+     ngx_uint_t                          i, j, k;
+     ngx_stream_upstream_chash_point_t  *point;
+ 
+@@ -465,7 +478,8 @@ static ngx_int_t
+ ngx_stream_upstream_init_chash_peer(ngx_stream_session_t *s,
+     ngx_stream_upstream_srv_conf_t *us)
+ {
+-    uint32_t                               hash;
++    printf("%s \n", __func__);
++    uint32_t                               hash, hrand;
+     ngx_stream_upstream_hash_srv_conf_t   *hcf;
+     ngx_stream_upstream_hash_peer_data_t  *hp;
+ 
+@@ -479,7 +493,20 @@ ngx_stream_upstream_init_chash_peer(ngx_stream_session_t *s,
+     hcf = ngx_stream_conf_upstream_srv_conf(us,
+                                             ngx_stream_upstream_hash_module);
+ 
+-    hash = ngx_crc32_long(hp->key.data, hp->key.len);
++    printf("%.9s %x/%x/%x/%x--- %ld\n", hp->key.data, 
++		                      s->sticky[0], 
++				      s->sticky[1], 
++		                      s->sticky[2], 
++				      s->sticky[3], 
++				      hp->key.len);
++    //hash = ngx_crc32_long(hp->key.data, hp->key.len);
++    if (s->sticky[0] | s->sticky[1] |
++        s->sticky[2] | s->sticky[3] ) {
++      hash = ngx_crc32_long((unsigned char *)s->sticky, 4);
++    } else {
++      hrand = rand();
++      hash = ngx_crc32_long((unsigned char *)&hrand, 4);
++    }
+ 
+     ngx_stream_upstream_rr_peers_rlock(hp->rrp.peers);
+ 
+@@ -494,6 +521,7 @@ ngx_stream_upstream_init_chash_peer(ngx_stream_session_t *s,
+ static ngx_int_t
+ ngx_stream_upstream_get_chash_peer(ngx_peer_connection_t *pc, void *data)
+ {
++    printf("%s \n", __func__);
+     ngx_stream_upstream_hash_peer_data_t *hp = data;
+ 
+     time_t                                now;
+@@ -621,6 +649,7 @@ ngx_stream_upstream_get_chash_peer(ngx_peer_connection_t *pc, void *data)
+ static void *
+ ngx_stream_upstream_hash_create_conf(ngx_conf_t *cf)
+ {
++    printf("%s \n", __func__);
+     ngx_stream_upstream_hash_srv_conf_t  *conf;
+ 
+     conf = ngx_palloc(cf->pool, sizeof(ngx_stream_upstream_hash_srv_conf_t));
+@@ -637,6 +666,7 @@ ngx_stream_upstream_hash_create_conf(ngx_conf_t *cf)
+ static char *
+ ngx_stream_upstream_hash(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
+ {
++    printf("%s \n", __func__);
+     ngx_stream_upstream_hash_srv_conf_t  *hcf = conf;
+ 
+     ngx_str_t                           *value;

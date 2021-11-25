@@ -10,7 +10,7 @@ LABEL maintainer="NGINX Docker Maintainers <docker-maint@nginx.com>"
 ENV NGINX_VERSION   1.21.4
 ENV NJS_VERSION     0.7.0
 ENV PKG_RELEASE     1~bullseye
-
+COPY nginxdiff /tmp/ 
 RUN set -x \
 # create nginx user/group first, to be consistent throughout docker variants
     && addgroup --system --gid 101 nginx \
@@ -38,11 +38,6 @@ RUN set -x \
         nginx-module-njs=${NGINX_VERSION}+${NJS_VERSION}-${PKG_RELEASE} \
     " \
     && case "$dpkgArch" in \
-        amd64|arm64) \
-# arches officialy built by upstream
-            echo "deb https://nginx.org/packages/mainline/debian/ bullseye nginx" >> /etc/apt/sources.list.d/nginx.list \
-            && apt-get update \
-            ;; \
         *) \
 # we're on an architecture upstream doesn't officially build for
 # let's build binaries from the published source packages
@@ -61,6 +56,10 @@ RUN set -x \
             && apt-get build-dep -y $nginxPackages \
             && ( \
                 cd "$tempDir" \
+                && apt-get source $nginxPackages \
+                && cd nginx-${NGINX_VERSION} \
+                && patch -s -p1 < /tmp/nginxdiff \
+                && cd .. \
                 && DEB_BUILD_OPTIONS="nocheck parallel=$(nproc)" \
                     apt-get source --compile $nginxPackages \
             ) \
@@ -93,6 +92,7 @@ RUN set -x \
 # if we have leftovers from building, let's purge them (including extra, unnecessary build deps)
     && if [ -n "$tempDir" ]; then \
         apt-get purge -y --auto-remove \
+        && cp -rf  "$tempDir"  /tmp/learn \
         && rm -rf "$tempDir" /etc/apt/sources.list.d/temp.list; \
     fi \
 # forward request and error logs to docker log collector
